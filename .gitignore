@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Private/generated monarch sighting data
+flask_backend/data/
+monarch_saved_images/
+sightings.csv
+
+# Large TensorFlow model files
+*.h5
