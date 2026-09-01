@@ -9,7 +9,7 @@ import traceback
 from datetime import datetime
 import uuid
 import requests
-
+from werkzeug.exceptions import RequestEntityTooLarge
 
 # =========================================================
 # SETTINGS
@@ -26,21 +26,29 @@ WEIGHTS_FILE = os.path.join(
     "monarch_weights.weights.h5"
 )
 
-# Store generated data relative to this file so the same code works on
-# Windows, Linux, and AWS. The data directory should be excluded from Git.
-DATA_FOLDER = os.path.join(BASE_DIR, "data")
-SAVE_FOLDER = os.path.join(DATA_FOLDER, "monarch_saved_images")
-CSV_FILE = os.path.join(DATA_FOLDER, "sightings.csv")
+# Folder where confident monarch images will be saved
+SAVE_FOLDER = os.path.join(BASE_DIR, "monarch_saved_images")
+
+# CSV file where confident monarch sightings will be recorded
+CSV_FILE = os.path.join(BASE_DIR, "sightings.csv")
 
 # Open-Meteo weather endpoint
 WEATHER_API_URL = "https://api.open-meteo.com/v1/forecast"
 WEATHER_TIMEOUT_SECONDS = 10
 
-os.makedirs(DATA_FOLDER, exist_ok=True)
 os.makedirs(SAVE_FOLDER, exist_ok=True)
 
 app = Flask(__name__)
+# Maximum uploaded image size: 50 MB
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 
+# Newer Werkzeug versions (2.3+) added separate caps for multipart
+# form parsing that did not exist before. These can reject a normal
+# single-image upload even though MAX_CONTENT_LENGTH is plenty large,
+# if a newer Werkzeug ends up installed (e.g. after a fresh AWS
+# deployment) than whatever was cached locally during development.
+app.config["MAX_FORM_MEMORY_SIZE"] = 50 * 1024 * 1024  # default is 500 KB
+app.config["MAX_FORM_PARTS"] = 10_000                   # default is 1000
 
 # =========================================================
 # BUILD AND LOAD CNN
@@ -442,6 +450,13 @@ def predict():
         # 1. Read raw request data first
         # -------------------------------------------------
 
+        print(
+            "INCOMING CONTENT-LENGTH HEADER:",
+            request.content_length,
+            "CONTENT-TYPE:",
+            request.content_type
+        )
+
         raw_data = request.get_data(cache=True)
 
         # -------------------------------------------------
@@ -471,9 +486,7 @@ def predict():
         print()
         print("========================================")
         print("NEW PREDICTION REQUEST")
-        # Avoid logging the full URL because its query string can contain
-        # coordinates and user notes.
-        print("PATH:", request.path)
+        print("URL:", request.url)
         print("METHOD:", request.method)
         print("CONTENT TYPE:", request.content_type)
         print("CONTENT LENGTH:", request.content_length)
@@ -723,6 +736,13 @@ def predict():
 
         return jsonify(response), 200
 
+    except RequestEntityTooLarge:
+        print("REQUEST ENTITY TOO LARGE - see traceback for exact cause:")
+        traceback.print_exc()
+        # Let this propagate to the @app.errorhandler(413) below
+        # instead of being reported as a generic 500 error.
+        raise
+
     except Exception as error:
         print(
             "UNEXPECTED SERVER ERROR:",
@@ -760,14 +780,21 @@ def method_not_allowed(error):
         )
     }), 405
 
-
+@app.errorhandler(413)
+def file_too_large(error):
+    return jsonify({
+        "error": "The uploaded image is too large. Maximum size is 50 MB.",
+        "saved": False
+    }), 413
 # =========================================================
 # START SERVER
 # =========================================================
 
+
 if __name__ == "__main__":
     app.run(
         debug=False,
+        use_reloader=False,
         host="0.0.0.0",
         port=5000
     )
