@@ -7,7 +7,7 @@ Monarch Detector is a two-part application:
 - **Mobile client:** An MIT App Inventor application packaged as `app_inventor/Monarch_detector.aia`.
 - **Inference service:** A Flask application in `flask_backend/app.py` that accepts an image, classifies it with a TensorFlow CNN, optionally enriches a qualifying sighting with weather data, and stores the sighting locally.
 
-The mobile client captures the image and location. The Flask service owns image preprocessing, prediction, confidence decisions, weather retrieval, and persistence.
+The mobile client captures the image and location. The Flask service owns image preprocessing, prediction, confidence decisions, weather retrieval, and persistence. The backend reduces valid coordinates to two decimal places immediately after validation, so neighborhood-level coordinates are the only coordinates used after the request boundary.
 
 ## 2. Component Architecture
 
@@ -57,10 +57,11 @@ The current Web component URL is an ngrok tunnel URL embedded in the `.aia` proj
 1. Build the CNN architecture and load local weights at startup.
 2. Accept raw image bodies or multipart file uploads.
 3. Validate optional latitude and longitude query parameters.
-4. Decode, convert to RGB, resize to `224 x 224`, and normalize image data to `[0, 1]`.
-5. Generate a binary Monarch/Non-Monarch prediction.
-6. Save qualifying Monarch sightings and retrieve current weather for valid coordinates.
-7. Return a JSON response to the mobile client.
+4. Reduce valid coordinates to two decimal places before using them anywhere else.
+5. Decode, convert to RGB, resize to `224 x 224`, and normalize image data to `[0, 1]`.
+6. Generate a binary Monarch/Non-Monarch prediction.
+7. Save qualifying Monarch sightings and retrieve current weather for approximated coordinates.
+8. Return a JSON response to the mobile client.
 
 ## 3. Request Lifecycle
 
@@ -123,8 +124,8 @@ Optional query parameters:
 
 | Parameter | Purpose |
 | --- | --- |
-| `latitude` | Latitude text, validated to `-90..90`. |
-| `longitude` | Longitude text, validated to `-180..180`. |
+| `latitude` | Latitude text, validated to `-90..90`, then rounded to two decimal places. |
+| `longitude` | Longitude text, validated to `-180..180`, then rounded to two decimal places. |
 | `notes` | User notes stored with a saved sighting. |
 
 Successful responses include `label`, `confidence`, `raw_score`, `saved`, `sighting_id`, `image_filename`, location fields, a timestamp, and a `weather` object. Invalid image data returns `400`; oversized requests return `413`; saving failures return `500` after prediction; unexpected failures return `500`.
@@ -138,7 +139,7 @@ Persistence is filesystem-based and local to the Flask process directory:
 - `flask_backend/monarch_saved_images/<uuid>.jpg` stores the normalized JPEG for each saved sighting.
 - `flask_backend/sightings.csv` stores one row per saved sighting.
 
-The CSV contains the sighting UUID, image filename, prediction, confidence, coordinates, timestamp, notes, and the weather fields returned by Open-Meteo. Missing values are written as blank cells. Weather failure does not prevent a qualifying image from being saved; weather fields remain empty.
+The CSV contains the sighting UUID, image filename, prediction, confidence, approximated coordinates, timestamp, notes, and the weather fields returned by Open-Meteo. Missing values are written as blank cells. Weather failure does not prevent a qualifying image from being saved; weather fields remain empty. Exact coordinates are not stored by the application.
 
 There is no database, authentication layer, user account model, background job queue, or object storage integration in the current project.
 
@@ -171,6 +172,7 @@ The model weights and runtime-generated `monarch_saved_images/` and `sightings.c
 ## 9. Operational Considerations
 
 - The API has no authentication or authorization, so anyone who can reach the endpoint can submit images and consume inference resources.
+- The mobile client currently transmits the device coordinates to the API; the backend rounds them immediately and does not persist or return the exact values. For stronger privacy, round coordinates in the App Inventor blocks before constructing the request URL, so exact values never leave the device.
 - CSV appends and image writes are local and are not designed for concurrent multi-worker coordination or durable backups.
 - The model is loaded during module import, which makes startup dependent on TensorFlow availability and the weights file.
 - The mobile client depends on a hard-coded tunnel URL; URL configuration should be externalized for repeatable deployments.

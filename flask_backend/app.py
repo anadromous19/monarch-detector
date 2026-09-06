@@ -17,6 +17,10 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 CONFIDENCE_THRESHOLD = 0.60
 
+# Store and use neighborhood-level coordinates instead of exact GPS data.
+# Two decimal places is approximately 1 km of latitude at the equator.
+LOCATION_DECIMAL_PLACES = 2
+
 # Folder containing this Python file
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -155,6 +159,18 @@ def validate_coordinates(latitude_text, longitude_text):
         pass
 
     return None, None, False
+
+
+def approximate_coordinates(latitude, longitude):
+    """Reduce coordinate precision before use, storage, or response."""
+
+    if latitude is None or longitude is None:
+        return None, None
+
+    return (
+        round(latitude, LOCATION_DECIMAL_PLACES),
+        round(longitude, LOCATION_DECIMAL_PLACES)
+    )
 
 
 # =========================================================
@@ -483,17 +499,19 @@ def predict():
             longitude_text
         )
 
+        latitude, longitude = approximate_coordinates(
+            latitude,
+            longitude
+        )
+
         print()
         print("========================================")
         print("NEW PREDICTION REQUEST")
-        print("URL:", request.url)
         print("METHOD:", request.method)
         print("CONTENT TYPE:", request.content_type)
         print("CONTENT LENGTH:", request.content_length)
         print("RAW DATA SIZE:", len(raw_data))
         print("FIRST 20 BYTES:", raw_data[:20])
-        print("LATITUDE RECEIVED:", latitude_text)
-        print("LONGITUDE RECEIVED:", longitude_text)
         print("LOCATION VALID:", location_valid)
         print("========================================")
 
@@ -523,8 +541,8 @@ def predict():
                 "error": "No image data was received.",
                 "content_type": request.content_type,
                 "raw_data_size": len(raw_data),
-                "latitude": latitude_text,
-                "longitude": longitude_text,
+                "latitude": latitude,
+                "longitude": longitude,
                 "saved": False
             }), 400
 
