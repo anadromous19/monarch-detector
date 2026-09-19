@@ -1,6 +1,6 @@
 # Monarch Detector Architecture
 
-## 1. System Overview
+## 1. System Overview 
 
 Monarch Detector is a two-part application:
 
