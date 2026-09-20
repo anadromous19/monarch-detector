@@ -1,4 +1,4 @@
-# Monarch Detector Architecture
+# Monarch Detector Architecture 
 
 ## 1. System Overview 
 
