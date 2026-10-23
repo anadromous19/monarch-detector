@@ -1,8 +1,8 @@
-# Monarch Detector Architecture 
+# iMonarch Detector Architecture 
 
 ## 1. System Overview 
 
-Monarch Detector is a two-part application:
+iMonarch Detector is a two-part application:
 
 - **Mobile client:** An MIT App Inventor application packaged as `app_inventor/Monarch_detector.aia`.
 - **Inference service:** A Flask application in `flask_backend/app.py` that accepts an image, classifies it with a TensorFlow CNN, optionally enriches a qualifying sighting with weather data, and stores the sighting locally.
